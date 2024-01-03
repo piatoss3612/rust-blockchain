@@ -1,6 +1,6 @@
-use crate::blockchain::Blockchain;
 use crate::errors::Result;
 use crate::transaction::Transaction;
+use crate::{blockchain::Blockchain, wallet::Wallets};
 use clap::{arg, Command};
 use std::process::exit;
 
@@ -17,6 +17,8 @@ impl Cli {
             .about("blockchain in rust: a simple blockchain for learning")
             .arg_required_else_help(true)
             .subcommand(Command::new("printchain").about("print all the chain blocks"))
+            .subcommand(Command::new("createwallet").about("create a wallet"))
+            .subcommand(Command::new("listaddresses").about("list all addresses"))
             .subcommand(
                 Command::new("getbalance")
                     .about("get balance in the blochain")
@@ -60,6 +62,22 @@ impl Cli {
             /*else {
                 println!("Not printing testing lists...");
             }*/
+        }
+
+        if let Some(_) = matches.subcommand_matches("createwallet") {
+            let mut ws = Wallets::new()?;
+            let address = ws.create_wallet();
+            ws.save_all()?;
+            println!("success: address {}", address);
+        }
+
+        if let Some(_) = matches.subcommand_matches("listaddresses") {
+            let ws = Wallets::new()?;
+            let addresses = ws.get_all_address();
+            println!("addresses: ");
+            for ad in addresses {
+                println!("{}", ad);
+            }
         }
 
         if let Some(ref matches) = matches.subcommand_matches("send") {

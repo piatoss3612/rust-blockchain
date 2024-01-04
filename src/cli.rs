@@ -125,15 +125,22 @@ impl Cli {
 
             let bc = Blockchain::new()?;
             let mut utxo_set = UTXOSet { blockchain: bc };
-            let tx = Transaction::new_utxo(from, to, amount, &utxo_set)?;
+
+            let wallets = Wallets::new()?;
+            let from_wallet = match wallets.get_wallet(&from) {
+                Some(w) => w,
+                None => {
+                    println!("wallet not found for address: {}", from);
+                    exit(1)
+                }
+            };
+
+            let tx = Transaction::new_utxo(from_wallet, to, amount, &utxo_set)?;
             let cbtx = Transaction::new_coinbase(from.to_string(), String::from("reward!"))?;
-            let new_block = utxo_set.blockchain.add_block(vec![cbtx, tx])?;
+            let new_block = utxo_set.blockchain.mine_block(vec![cbtx, tx])?;
 
             utxo_set.update(&new_block)?;
             println!("success!");
-            /*else {
-                println!("Not printing testing lists...");
-            }*/
         }
 
         if let Some(_) = matches.subcommand_matches("printchain") {

@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-
 use anyhow::anyhow;
+use bincode::{deserialize, serialize};
+use std::collections::HashMap;
+use std::path::Path;
 
 use crate::block::Block;
 use crate::errors::Result;
 use crate::transaction::{TXOutputs, Transaction};
 
-const TARGET_HEXT: usize = 4; // 4 leading zeros in hex (difficulty)
 const GENESIS_COINBASE_DATA: &str =
     "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"; // genesis block data
 
@@ -24,8 +24,16 @@ impl Blockchain {
         let db = sled::open("data/blocks")?;
 
         // get the hash of the last block
-        let hash = db.get("LAST")?.expect("No existing blockchain found");
-        let lasthash = String::from_utf8(hash.to_vec())?;
+        let hash = match db.get("LAST")? {
+            Some(h) => h.to_vec(),
+            None => Vec::new(),
+        };
+
+        let lasthash = if hash.is_empty() {
+            String::new()
+        } else {
+            String::from_utf8(hash)?
+        };
 
         // return the Blockchain
         Ok(Self {
@@ -80,7 +88,12 @@ impl Blockchain {
     }
 
     // Verify a transaction
-    pub fn verify_transaction(&self, tx: &mut Transaction) -> Result<bool> {
+    pub fn verify_transaction(&self, tx: &Transaction) -> Result<bool> {
+        // coinbase transactions are always valid
+        if tx.is_coinbase() {
+            return Ok(true);
+        }
+
         // get previous transactions referenced in the transaction (inputs)
         let prev_txs = self.get_prev_txs(tx)?;
 
@@ -91,6 +104,11 @@ impl Blockchain {
     // Create a new Blockchain with a genesis block
     // address: the address to send the genesis block reward to
     pub fn create_blockchain(address: String) -> Result<Self> {
+        // check if the blockchain already exists
+        if Path::new("data/blocks").is_dir() {
+            return Err(anyhow!("Blockchain already exists"));
+        }
+
         // open the database
         let db = sled::open("data/blocks")?;
 
@@ -101,7 +119,7 @@ impl Blockchain {
         let genesis: Block = Block::new_genesis_block(cbtx);
 
         // insert the genesis block into the database
-        db.insert(genesis.get_hash(), bincode::serialize(&genesis)?)
+        db.insert(genesis.get_hash(), serialize(&genesis)?)
             .expect("Failed to insert");
         db.insert("LAST", genesis.get_hash().as_bytes())?;
 
@@ -115,25 +133,116 @@ impl Blockchain {
         })
     }
 
-    // Add a block to the blockchain
-    // data: the data to add to the block
-    pub fn add_block(&mut self, data: Vec<Transaction>) -> Result<Block> {
-        // get the hash of the last block
-        let lasthash = self.db.get("LAST")?.unwrap();
+    // Mine a new block with the provided transactions
+    // transactions: the transactions to include in the block
+    pub fn mine_block(&mut self, transactions: Vec<Transaction>) -> Result<Block> {
+        // verify the transactions before mining
+        for tx in &transactions {
+            if !self.verify_transaction(tx)? {
+                return Err(anyhow!("Invalid transaction"));
+            }
+        }
 
-        // create a new block with the data, the hash of the last block and the target
-        let new_block = Block::new_block(data, String::from_utf8(lasthash.to_vec())?, TARGET_HEXT)?;
+        // get the hash of the last block
+        let lasthash = match self.db.get("LAST")? {
+            Some(h) => h.to_vec(),
+            None => Err(anyhow!("Last hash not found"))?,
+        };
+
+        // create a new block with the transactions, the hash of the last block and the best block height
+        let new_block = Block::new_block(
+            transactions,
+            String::from_utf8(lasthash)?,
+            self.get_best_height()?,
+        )?;
 
         // insert the new block into the database
         self.db
-            .insert(new_block.get_hash(), bincode::serialize(&new_block)?)?;
+            .insert(new_block.get_hash(), serialize(&new_block)?)?;
         self.db.insert("LAST", new_block.get_hash().as_bytes())?;
+        self.db.flush()?;
 
-        // update the current hash of the blockchain
         self.current_hash = new_block.get_hash();
 
         // return the new block
         Ok(new_block)
+    }
+
+    // Add a block to the blockchain
+    // block: the block to add
+    pub fn add_block(&mut self, block: Block) -> Result<()> {
+        // Serialize the block
+        let data = serialize(&block)?;
+
+        // Check if the block already exists
+        if let Some(_) = self.db.get(block.get_hash())? {
+            return Ok(());
+        }
+
+        // Insert the block into the database
+        self.db.insert(block.get_hash(), data)?;
+
+        let height = self.get_best_height()?;
+
+        if block.get_height() > height {
+            self.db.insert("LAST", block.get_hash().as_bytes())?;
+            self.current_hash = block.get_hash();
+            self.db.flush()?;
+        }
+
+        // Return Ok
+        Ok(())
+    }
+
+    // Get a block by its hash
+    pub fn get_block(&self, hash: &str) -> Result<Block> {
+        // Get the block from the database
+        let data = match self.db.get(hash)? {
+            Some(d) => d,
+            None => Err(anyhow!("Block not found"))?,
+        }
+        .to_vec();
+
+        // Deserialize the block
+        let block = deserialize::<Block>(&data)?;
+
+        // Return the block
+        Ok(block)
+    }
+
+    // Get the best block height
+    pub fn get_best_height(&self) -> Result<u32> {
+        // Get the hash of the last block
+        let lasthash = match self.db.get("LAST")? {
+            Some(h) => h.to_vec(),
+            None => Err(anyhow!("Last hash not found"))?,
+        };
+
+        // Get the last block from the database
+        let data = match self.db.get(String::from_utf8(lasthash)?)? {
+            Some(d) => d,
+            None => Err(anyhow!("Block not found"))?,
+        };
+
+        // Deserialize the block
+        let block = deserialize::<Block>(&data.to_vec())?;
+
+        // Return the height of the block
+        Ok(block.get_height())
+    }
+
+    // Get the hash of all blocks from the last to the first
+    pub fn get_block_hashs(&self) -> Vec<String> {
+        // Create a vector to store the hashs
+        let mut hashs = Vec::new();
+
+        // Iterate over all blocks in the blockchain
+        for block in self.iter() {
+            hashs.push(block.get_hash());
+        }
+
+        // Return the hashs
+        hashs
     }
 
     // Find all unspent transaction outputs and return transactions with spent outputs removed
@@ -198,23 +307,23 @@ impl Blockchain {
         utxos
     }
 
-    // Create a new BlockchainIterator
-    pub fn iter(&self) -> BlockchainIter {
-        BlockchainIter {
+    // Create a new BlockchainIteratorator
+    pub fn iter(&self) -> BlockchainIterator {
+        BlockchainIterator {
             current_hash: self.current_hash.clone(),
             bc: &self,
         }
     }
 }
 
-// BlockchainIter struct contains a current hash and a reference to a Blockchain
+// BlockchainIterator struct contains a current hash and a reference to a Blockchain
 // It implements Iterator trait and has lifetime 'a (which means it can't outlive the Blockchain it refers to)
-pub struct BlockchainIter<'a> {
+pub struct BlockchainIterator<'a> {
     current_hash: String,
     bc: &'a Blockchain,
 }
 
-impl<'a> Iterator for BlockchainIter<'a> {
+impl<'a> Iterator for BlockchainIterator<'a> {
     type Item = Block; // The type of the data that iterates over
 
     // Get the next item in the iterator

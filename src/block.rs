@@ -17,8 +17,8 @@ pub struct Block {
     transactions: Vec<Transaction>, // Transactions that are included in the block
     prev_block_hash: String, // Hash of the previous block
     hash: String,    // Hash of the block
-    height: usize,   // Height of the block in the blockchain
-    nonce: i32,      // Nonce of the block
+    height: u32,     // Height of the block in the blockchain
+    nonce: u32,      // Nonce of the block
 }
 
 impl Block {
@@ -34,6 +34,10 @@ impl Block {
         self.hash.clone()
     }
 
+    pub fn get_height(&self) -> u32 {
+        self.height
+    }
+
     // =========================================
 
     /// Create a genesis block
@@ -45,11 +49,7 @@ impl Block {
     // data: Transactions that are included in the block
     // prev_block_hash: Hash of the previous block
     // height: Height of the block in the blockchain
-    pub fn new_block(
-        data: Vec<Transaction>,
-        prev_block_hash: String,
-        height: usize,
-    ) -> Result<Self> {
+    pub fn new_block(data: Vec<Transaction>, prev_block_hash: String, height: u32) -> Result<Self> {
         // Get the current time in milliseconds since the Unix Epoch
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)?

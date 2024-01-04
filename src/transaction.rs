@@ -1,7 +1,7 @@
-use crate::errors::Result;
 use crate::utils::hash_pub_key;
 use crate::utxoset::UTXOSet;
 use crate::wallet::Wallets;
+use crate::{errors::Result, wallet::Wallet};
 use anyhow::anyhow;
 use bitcoincash_addr::Address;
 use crypto::digest::Digest;
@@ -25,25 +25,13 @@ pub struct TXOutputs {
 
 impl Transaction {
     // Create a new transaction
-    // from: the address of the sender
+    // from: the wallet of the sender
     // to: the address of the receiver
     // amount: the amount to be sent
     // utxoset: the UTXO set of from address
-    pub fn new_utxo(from: &str, to: &str, amount: i32, utxoset: &UTXOSet) -> Result<Self> {
-        // Find the wallet of the sender and receiver
-        let wallets = Wallets::new()?;
-
-        let wallet = match wallets.get_wallet(from) {
-            Some(w) => w,
-            None => return Err(anyhow!("No wallet found for address: {}", from)),
-        };
-
-        if let None = wallets.get_wallet(to) {
-            return Err(anyhow!("No wallet found for address: {}", to));
-        }
-
+    pub fn new_utxo(from: &Wallet, to: &str, amount: i32, utxoset: &UTXOSet) -> Result<Self> {
         // Get the public key hash of the sender
-        let mut pub_key_hash = wallet.public_key.clone();
+        let mut pub_key_hash = from.public_key.clone();
         hash_pub_key(&mut pub_key_hash);
 
         // Find the spendable outputs of the sender and the total amount
@@ -71,7 +59,7 @@ impl Transaction {
                     txid: tx.0.clone(),
                     vout: out,
                     signature: Vec::new(),
-                    pub_key: wallet.public_key.clone(),
+                    pub_key: from.public_key.clone(),
                 };
                 vin.push(input);
             }
@@ -83,7 +71,7 @@ impl Transaction {
 
         // vout[1] is for the sender (change)
         if acc_v.0 > amount {
-            vout.push(TXOutput::new(acc_v.0 - amount, from.to_string())?);
+            vout.push(TXOutput::new(acc_v.0 - amount, from.get_address())?);
         }
 
         // Create the transaction
@@ -99,7 +87,7 @@ impl Transaction {
         // Sign the transaction with the private key of the sender
         utxoset
             .blockchain
-            .sign_transaction(&mut tx, &wallet.secret_key)?;
+            .sign_transaction(&mut tx, &from.secret_key)?;
 
         // Return the transaction
         Ok(tx)
@@ -227,7 +215,7 @@ impl Transaction {
 
     // Verify the transaction
     // prev_txs: has output transactions of the inputs of current transaction
-    pub fn verify(&mut self, prev_txs: HashMap<String, Transaction>) -> Result<bool> {
+    pub fn verify(&self, prev_txs: HashMap<String, Transaction>) -> Result<bool> {
         // If the transaction is a coinbase transaction, return true
         if self.is_coinbase() {
             return Ok(true);

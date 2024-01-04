@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::blockchain::Blockchain;
 use crate::errors::Result;
+use crate::utxoset::UTXOSet;
 use crate::wallet::Wallets;
 use anyhow::anyhow;
 use bitcoincash_addr::Address;
@@ -20,7 +21,7 @@ pub struct Transaction {
 
 impl Transaction {
     /// NewUTXOTransaction creates a new transaction
-    pub fn new_UTXO(from: &str, to: &str, amount: i32, bc: &Blockchain) -> Result<Transaction> {
+    pub fn new_UTXO(from: &str, to: &str, amount: i32, utxoset: &UTXOSet) -> Result<Transaction> {
         let mut vin = Vec::new();
 
         let wallets = Wallets::new()?;
@@ -37,7 +38,7 @@ impl Transaction {
         let mut pub_key_hash = wallet.public_key.clone();
         hash_pub_key(&mut pub_key_hash);
 
-        let acc_v = bc.find_spendable_outputs(&pub_key_hash, amount);
+        let acc_v = utxoset.find_spendable_outputs(&pub_key_hash, amount)?;
 
         if acc_v.0 < amount {
             return Err(anyhow!(
@@ -72,7 +73,9 @@ impl Transaction {
         };
 
         tx.id = tx.hash()?;
-        bc.sign_transaction(&mut tx, &wallet.secret_key)?;
+        utxoset
+            .blockchain
+            .sign_transaction(&mut tx, &wallet.secret_key)?;
         Ok(tx)
     }
 
@@ -259,4 +262,9 @@ pub fn hash_pub_key(pub_key: &mut Vec<u8>) {
     hasher2.input(pub_key);
     pub_key.resize(20, 0);
     hasher2.result(pub_key);
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TXOutputs {
+    pub outputs: Vec<TXOutput>,
 }

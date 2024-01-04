@@ -1,11 +1,16 @@
 use crate::{errors::Result, transaction::Transaction};
+use anyhow::Ok;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use log::info;
 use std::time::SystemTime;
 const TARGET_HEXT: usize = 4;
+use merkle_cbt::merkle_tree::Merge;
+use merkle_cbt::merkle_tree::CBMT;
 use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+
 pub struct Block {
     timestamp: u128,
     transactions: Vec<Transaction>,
@@ -26,9 +31,20 @@ impl Block {
     pub fn get_hash(&self) -> String {
         self.hash.clone()
     }
-    ///newGensesisBlock
+
     pub fn new_genesis_block(cbtx: Transaction) -> Block {
         Self::new_block(vec![cbtx], String::new(), 0).unwrap()
+    }
+
+    pub fn hash_transactions(&mut self) -> Result<Vec<u8>> {
+        let mut transactions = Vec::new();
+        for tx in &mut self.transactions {
+            transactions.push(tx.hash()?.as_bytes().to_owned());
+        }
+
+        let tree = CBMT::<Vec<u8>, MergeTx>::build_merkle_tree(&transactions);
+
+        Ok(tree.root())
     }
 
     pub fn new_block(
@@ -61,10 +77,10 @@ impl Block {
         self.hash = hasher.result_str();
         Ok(())
     }
-    fn prepare_hash_data(&self) -> Result<Vec<u8>> {
+    fn prepare_hash_data(&mut self) -> Result<Vec<u8>> {
         let content = (
             self.prev_block_hash.clone(),
-            self.transactions.clone(),
+            self.hash_transactions()?,
             self.timestamp,
             TARGET_HEXT,
             self.nonce,
@@ -72,12 +88,28 @@ impl Block {
         let bytes = bincode::serialize(&content)?;
         Ok(bytes)
     }
-    fn validate(&self) -> Result<bool> {
+    fn validate(&mut self) -> Result<bool> {
         let data = self.prepare_hash_data()?;
         let mut hasher = Sha256::new();
         hasher.input(&data[..]);
         let mut vec1: Vec<u8> = vec![];
         vec1.resize(TARGET_HEXT, '0' as u8);
         Ok(&hasher.result_str()[0..TARGET_HEXT] == String::from_utf8(vec1)?)
+    }
+}
+
+pub struct MergeTx;
+
+impl Merge for MergeTx {
+    type Item = Vec<u8>;
+
+    fn merge(left: &Self::Item, right: &Self::Item) -> Self::Item {
+        let mut hasher = Sha256::new();
+        let mut data = left.clone();
+        data.append(&mut right.clone());
+        hasher.input(&data[..]);
+        let mut res = [0; 32];
+        hasher.result(&mut res);
+        res.to_vec()
     }
 }

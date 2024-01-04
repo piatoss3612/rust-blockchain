@@ -104,7 +104,7 @@ impl Transaction {
     }
 
     /// SetID sets ID of a transaction
-    fn hash(&mut self) -> Result<String> {
+    pub(crate) fn hash(&mut self) -> Result<String> {
         self.id = String::new();
         let data = bincode::serialize(self)?;
         let mut hasher = Sha256::new();

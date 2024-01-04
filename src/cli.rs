@@ -7,7 +7,8 @@ use bitcoincash_addr::Address;
 use clap::{arg, Command};
 use std::process::exit;
 
-pub struct Cli {}
+// TODO: add comments to this file
+pub struct Cli;
 
 impl Cli {
     pub fn new() -> Result<Cli> {
@@ -85,7 +86,7 @@ impl Cli {
                 let bc = Blockchain::new()?;
                 // let utxos = bc.find_UTXO(&pub_key_hash);
                 let utxo_set = UTXOSet { blockchain: bc };
-                let utxos = utxo_set.find_UTXO(&pub_key_hash)?;
+                let utxos = utxo_set.find_utxo(&pub_key_hash)?;
 
                 println!("UTXO: {:#?}", utxos);
 
@@ -124,7 +125,7 @@ impl Cli {
 
             let bc = Blockchain::new()?;
             let mut utxo_set = UTXOSet { blockchain: bc };
-            let tx = Transaction::new_UTXO(from, to, amount, &utxo_set)?;
+            let tx = Transaction::new_utxo(from, to, amount, &utxo_set)?;
             let cbtx = Transaction::new_coinbase(from.to_string(), String::from("reward!"))?;
             let new_block = utxo_set.blockchain.add_block(vec![cbtx, tx])?;
 

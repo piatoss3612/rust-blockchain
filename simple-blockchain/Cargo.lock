@@ -390,23 +390,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-blockchain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "bitcoincash-addr",
- "clap",
- "log",
- "merkle-cbt",
- "rand 0.8.5",
- "rust-crypto",
- "serde",
- "serde_json",
- "sled",
-]
-
-[[package]]
 name = "rust-crypto"
 version = "0.2.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -466,6 +449,23 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "simple-blockchain"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "bitcoincash-addr",
+ "clap",
+ "log",
+ "merkle-cbt",
+ "rand 0.8.5",
+ "rust-crypto",
+ "serde",
+ "serde_json",
+ "sled",
 ]
 
 [[package]]
